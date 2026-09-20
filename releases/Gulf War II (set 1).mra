@@ -27,7 +27,7 @@
         <dip name="Dip Switch Display" bits="14" ids="Off,On"/>
     </switches>
 
-    <buttons names="Shot,Bomb,P1 Start,P2 Start,Coin,Pause" default="A,B,Start,Select,L,R"/>
+    <buttons names="Shoot,Bomb,1P Start,Coin,Pause" default="B,A,Start,Select,R"/>
 
     <rom index="0" zip="gulfwar2.zip" md5="None">
         <!-- Fixed download layout for the in-progress GulfWarII core. -->

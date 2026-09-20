@@ -6,7 +6,7 @@ A BSD-licensed core for TI's TMS32010 DSP © 2024 Sehyeon Kim(Raki)
 * FPGA proven.
 
 ## Current status
-v1.0 – ✅Verified using the arcade games Twin Cobra, Sky Shark, and Wardner by atrac17.
+v1.0 – ✅FPGA verified.
 
 ## Module instantiation
 The steps below show how to instantiate the IKA32010 module in Verilog:
@@ -50,7 +50,7 @@ IKA32010 u_main (
 * The other signals have the same function as the pins on the original chip.
 
 ## Compilation options
-* `IKA32010_DISASSEMBLY` You can track the disassembly log to see what opcodes the DSP executed. This requires the `IKA32010_disasm.sv` file.
+* `IKA32010_ENABLE_DISASSEMBLY` enables the optional disassembly log. This requires the `IKA32010_disasm.sv` file.
 * `IKA32010_DISASSEMBLY_SHOWID` displays the device ID in a console. This is useful when debugging a system with multiple DSPs or a system with another CPU.
 * `IKA32010_DEVICE_ID` and the following string will name the device.
 

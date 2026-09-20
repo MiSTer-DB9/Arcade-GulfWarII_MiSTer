@@ -193,7 +193,7 @@ wire [15:0] scroll_y_offset;
 
 wire [21:0] gamma_bus;
 
-//<buttons names="Shot,Bomb,P1 Start,P2 Start,Coin,Pause" default="A,B,Start,Select,L,R"/>
+//<buttons names="Shoot,Bomb,1P Start,Coin,Pause" default="B,A,Start,Select,R"/>
 // Inputs tied to z80_din
 reg [7:0] p1;
 reg [7:0] p2;
@@ -268,13 +268,13 @@ always @ * begin
 end
 
 always @ * begin
-        start1    <= joy0[6]  | joy1[6]  | key_start_1p;
-        start2    <= joy0[7]  | joy1[7]  | key_start_2p;
+        start1    <= joy0[6] | key_start_1p;
+        start2    <= joy1[6] | key_start_2p;
 
-        coin_a    <= joy0[8]  | joy1[8]  | key_coin_a;
+        coin_a    <= joy0[7] | joy1[7] | key_coin_a;
         coin_b    <= key_coin_b;
 
-        b_pause   <= joy0[9] | key_pause;
+        b_pause   <= joy0[8] | joy1[8] | key_pause;
         service   <= key_test;
 end
 
@@ -899,19 +899,8 @@ reg  z80_wait_n;
 wire IORQ_n;
 wire MREQ_n;
 
-wire ym3812_access = z80_sound0_cs || z80_sound1_cs;
-wire ym3812_write_active = !z80_wr_n && ym3812_access;
 wire [7:0] opl_dout;
 wire opl_irq_n;
-
-localparam [7:0] YM3812_ADDR_BUSY_TICKS = 8'd12;
-localparam [7:0] YM3812_DATA_BUSY_TICKS = 8'd84;
-localparam [4:0] YM3812_WR_HOLD_SYS     = 5'd8;
-
-logic [7:0] ym3812_busy_ctr;
-logic       ym3812_write_captured;
-wire        ym3812_write_ready = ym3812_write_active && !ym3812_write_captured && (ym3812_busy_ctr == 8'd0);
-wire        ym3812_wait = ym3812_access && (ym3812_busy_ctr != 8'd0) && !ym3812_write_ready;
 
 always @ (posedge clk_sys) begin
     if ( reset == 1 ) begin
@@ -919,8 +908,7 @@ always @ (posedge clk_sys) begin
     end else if ( clk_3_5M == 1 ) begin
         z80_wait_n <= 1;
         if ( ioctl_download |
-             ( z80_rd_n == 0 && sound_rom_1_data_valid == 0 && sound_rom_1_cs == 1 ) |
-             ym3812_wait ) begin
+             ( z80_rd_n == 0 && sound_rom_1_data_valid == 0 && sound_rom_1_cs == 1 ) ) begin
             // wait if rom is selected and data is not yet available
             z80_wait_n <= 0;
         end
@@ -955,104 +943,31 @@ always @ (posedge clk_sys) begin
 end
 
 logic signed [15:0] opl2_sample;
-wire opl2_sample_clk;
-logic [7:0] ym3812_din;
-logic ym3812_addr;
-logic ym3812_wr;
-logic [4:0] ym3812_wr_hold;
+logic opl2_sample_valid;
 
 assign AUDIO_S = 1'b1;
-
-always_ff @(posedge clk_sys) begin
-    if (!sound_reset_n) begin
-        ym3812_busy_ctr <= 8'd0;
-        ym3812_write_captured <= 1'b0;
-        ym3812_din <= 8'd0;
-        ym3812_addr <= 1'b0;
-        ym3812_wr <= 1'b0;
-        ym3812_wr_hold <= 5'd0;
-    end else begin
-        if (!ym3812_write_active) begin
-            ym3812_write_captured <= 1'b0;
-        end
-
-        if (clk_3_5M && (ym3812_busy_ctr != 8'd0)) begin
-            ym3812_busy_ctr <= ym3812_busy_ctr - 8'd1;
-        end
-
-        if (ym3812_wr_hold != 5'd0) begin
-            ym3812_wr_hold <= ym3812_wr_hold - 5'd1;
-        end
-        ym3812_wr <= (ym3812_wr_hold != 5'd0);
-
-        if (ym3812_write_ready) begin
-            ym3812_din <= z80_dout;
-            ym3812_addr <= z80_sound1_cs;
-            ym3812_write_captured <= 1'b1;
-            ym3812_busy_ctr <= z80_sound1_cs ? YM3812_DATA_BUSY_TICKS : YM3812_ADDR_BUSY_TICKS;
-            ym3812_wr_hold <= YM3812_WR_HOLD_SYS;
-            ym3812_wr <= 1'b1;
-        end
-    end
-end
 
 opl2_fpga u_ym3812 (
     .clk(clk_sys),
     .clk_host(clk_sys),
-    .clk_dac(clk_sys),
+    .clk_dac(CLK_AUDIO),
     .ic_n(sound_reset_n),
-    .cs_n(!ym3812_wr),
-    .rd_n(1'b1),
-    .wr_n(!ym3812_wr),
-    .address(ym3812_addr),
-    .din(ym3812_din),
+    .cs_n(!(z80_sound0_cs || z80_sound1_cs)),
+    .rd_n(z80_rd_n),
+    .wr_n(z80_wr_n),
+    .address(z80_sound1_cs),
+    .din(z80_dout),
     .dout(opl_dout),
-    .sample_valid(opl2_sample_clk),
+    .sample_valid(opl2_sample_valid),
     .sample(opl2_sample),
     .led(),
     .irq_n(opl_irq_n)
 );
 
-logic signed [15:0] ym3812_sample_sys;
-logic signed [15:0] ym3812_music_sample_sys;
-logic signed [15:0] ym3812_sfx_sample_sys;
-logic ym3812_sample_toggle_sys;
-
-always_ff @(posedge clk_sys) begin
-    if (!sound_reset_n) begin
-        ym3812_sample_sys <= 16'sd0;
-        ym3812_music_sample_sys <= 16'sd0;
-        ym3812_sfx_sample_sys <= 16'sd0;
-        ym3812_sample_toggle_sys <= 1'b0;
-    end else if (opl2_sample_clk) begin
-        ym3812_sample_sys <= opl2_sample;
-        ym3812_music_sample_sys <= opl2_sample;
-        ym3812_sfx_sample_sys <= 16'sd0;
-        ym3812_sample_toggle_sys <= ~ym3812_sample_toggle_sys;
-    end
-end
-
 logic [1:0] audio_reset_sync;
 logic [1:0] audio_pause_sync;
-logic [2:0] ym3812_sample_toggle_audio;
-logic [5:0] ym3812_level_audio_meta;
-logic [5:0] ym3812_level_audio;
-logic ym3812_filter_valid;
-logic signed [15:0] ym3812_sample_raw_audio;
-logic signed [15:0] ym3812_sample_filtered_audio;
-logic signed [15:0] ym3812_music_raw_audio;
-logic signed [15:0] ym3812_music_filtered_audio;
-logic signed [15:0] ym3812_sfx_raw_audio;
-logic signed [15:0] ym3812_sfx_filtered_audio;
-wire signed [16:0] ym3812_filter_sum =
-    {ym3812_sample_sys[15], ym3812_sample_sys} +
-    {ym3812_sample_raw_audio[15], ym3812_sample_raw_audio};
-wire signed [16:0] ym3812_music_filter_sum =
-    {ym3812_music_sample_sys[15], ym3812_music_sample_sys} +
-    {ym3812_music_raw_audio[15], ym3812_music_raw_audio};
-wire signed [16:0] ym3812_sfx_filter_sum =
-    {ym3812_sfx_sample_sys[15], ym3812_sfx_sample_sys} +
-    {ym3812_sfx_raw_audio[15], ym3812_sfx_raw_audio};
+logic [1:0] ym3812_level_audio_meta;
+logic [1:0] ym3812_level_audio;
 
 function automatic [7:0] ym3812_gain_from_level(input [1:0] level);
 begin
@@ -1065,30 +980,23 @@ begin
 end
 endfunction
 
-wire [7:0] ym3812_master_gain = ym3812_gain_from_level(ym3812_level_audio[1:0]);
-wire [7:0] ym3812_music_gain  = ym3812_gain_from_level(ym3812_level_audio[3:2]);
-wire [7:0] ym3812_sfx_gain    = ym3812_gain_from_level(ym3812_level_audio[5:4]);
-wire [15:0] ym3812_music_gain_product = ym3812_master_gain * ym3812_music_gain;
-wire [15:0] ym3812_sfx_gain_product   = ym3812_master_gain * ym3812_sfx_gain;
-wire [7:0] ym3812_music_mix_gain = ym3812_music_gain_product[11:4];
-wire [7:0] ym3812_sfx_mix_gain   = ym3812_sfx_gain_product[11:4];
+wire [7:0] ym3812_master_gain = ym3812_gain_from_level(ym3812_level_audio);
 wire signed [15:0] ym3812_mixed_audio;
-wire ym3812_mix_peak;
 
-gw2_audio_mixer #(.W0(16), .W1(16), .WOUT(16)) u_ym3812_mix (
+gw2_audio_mixer #(.W0(16), .WOUT(16)) u_ym3812_mix (
     .rst    ( reset || audio_reset_sync[1] ),
     .clk    ( CLK_AUDIO ),
     .cen    ( 1'b1 ),
-    .ch0    ( ym3812_music_filtered_audio ),
-    .ch1    ( ym3812_sfx_filtered_audio ),
+    .ch0    ( opl2_sample ),
+    .ch1    ( 16'sd0 ),
     .ch2    ( 16'sd0 ),
     .ch3    ( 16'sd0 ),
-    .gain0  ( ym3812_music_mix_gain ),
-    .gain1  ( ym3812_sfx_mix_gain ),
+    .gain0  ( ym3812_master_gain ),
+    .gain1  ( 8'd0 ),
     .gain2  ( 8'd0 ),
     .gain3  ( 8'd0 ),
     .mixed  ( ym3812_mixed_audio ),
-    .peak   ( ym3812_mix_peak )
+    .peak   ()
 );
 
 always_ff @(posedge CLK_AUDIO) begin
@@ -1100,33 +1008,14 @@ always_ff @(posedge CLK_AUDIO) begin
 
     if (reset || audio_reset_sync[1]) begin
         audio_pause_sync <= 2'b00;
-        ym3812_sample_toggle_audio <= {3{ym3812_sample_toggle_sys}};
-        ym3812_level_audio_meta <= 6'd0;
-        ym3812_level_audio <= 6'd0;
-        ym3812_filter_valid <= 1'b0;
-        ym3812_sample_raw_audio <= 16'sd0;
-        ym3812_sample_filtered_audio <= 16'sd0;
-        ym3812_music_raw_audio <= 16'sd0;
-        ym3812_music_filtered_audio <= 16'sd0;
-        ym3812_sfx_raw_audio <= 16'sd0;
-        ym3812_sfx_filtered_audio <= 16'sd0;
+        ym3812_level_audio_meta <= 2'd0;
+        ym3812_level_audio <= 2'd0;
         AUDIO_L <= 16'sd0;
         AUDIO_R <= 16'sd0;
     end else begin
         audio_pause_sync <= {audio_pause_sync[0], pause_cpu};
-        ym3812_sample_toggle_audio <= {ym3812_sample_toggle_audio[1:0], ym3812_sample_toggle_sys};
-        ym3812_level_audio_meta <= {2'd3, 2'd0, status[44:43]};
+        ym3812_level_audio_meta <= status[44:43];
         ym3812_level_audio <= ym3812_level_audio_meta;
-
-        if (ym3812_sample_toggle_audio[2] ^ ym3812_sample_toggle_audio[1]) begin
-            ym3812_sample_raw_audio <= ym3812_sample_sys;
-            ym3812_sample_filtered_audio <= ym3812_filter_valid ? ym3812_filter_sum[16:1] : ym3812_sample_sys;
-            ym3812_music_raw_audio <= ym3812_music_sample_sys;
-            ym3812_music_filtered_audio <= ym3812_filter_valid ? ym3812_music_filter_sum[16:1] : ym3812_music_sample_sys;
-            ym3812_sfx_raw_audio <= ym3812_sfx_sample_sys;
-            ym3812_sfx_filtered_audio <= ym3812_filter_valid ? ym3812_sfx_filter_sum[16:1] : ym3812_sfx_sample_sys;
-            ym3812_filter_valid <= 1'b1;
-        end
 
         if (audio_pause_sync[1]) begin
             AUDIO_L <= 16'sd0;

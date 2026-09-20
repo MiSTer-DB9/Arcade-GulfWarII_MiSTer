@@ -29,11 +29,18 @@ module IKA32010 (
 );
 
 
-// Debug output is simulation-only and must be enabled by the including build.
-`ifdef IKA32010_DISASSEMBLY
+//debug output
+// Upstream enabled the simulation disassembler unconditionally. Keep it
+// opt-in so the synthesizable core does not pull string/$display logic into
+// Quartus builds.
+`ifdef IKA32010_ENABLE_DISASSEMBLY
+`define IKA32010_DISASSEMBLY
+`define IKA32010_DISASSEMBLY_SHOWID
 `ifndef IKA32010_DEVICE_ID
-`define IKA32010_DEVICE_ID "ikakawa"
+`define IKA32010_DEVICE_ID "gulfwar2"
 `endif
+`endif
+`ifdef IKA32010_DISASSEMBLY
 `include "IKA32010_disasm.sv"
 `endif
 
@@ -332,7 +339,7 @@ end
 reg             reg_dp_set, reg_dp_rst;
 reg             reg_dp;
 always @(posedge i_EMUCLK) begin
-    if(i_RS_n) reg_dp <= 1'b0;
+    if(!i_RS_n) reg_dp <= 1'b0;
     else begin if(cyc_ncen) begin
         case({reg_dp_set, reg_dp_rst})
             2'b10: reg_dp <= 1'b1;

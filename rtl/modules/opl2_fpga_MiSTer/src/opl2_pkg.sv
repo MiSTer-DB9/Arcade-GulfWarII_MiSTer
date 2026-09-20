@@ -94,8 +94,8 @@ package opl2_pkg;
     localparam BANK_NUM_WIDTH = $clog2(NUM_BANKS);
     localparam OP_NUM_WIDTH = $clog2(NUM_OPERATORS_PER_BANK);
 
-    localparam TIMER1_TICK_INTERVAL = 80e-6;  // in seconds
-    localparam TIMER2_TICK_INTERVAL = 320e-6; // in seconds
+    localparam TIMER1_TICK_INTERVAL = 288.0/3.5e6;  // in seconds
+    localparam TIMER2_TICK_INTERVAL = 1152.0/3.5e6; // in seconds
 
     typedef enum logic [2:0] {
         OP_NORMAL,
